@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdint.h>
+#include <stdlib.h>
 
 #pragma pack(push, 1) // Stop padding on structs
 
@@ -16,14 +17,21 @@ typedef struct {
     int32_t height; // Height of image
     uint16_t planes; // Amount of colour planes (should be 1)
     uint16_t bitCount; // Aka bit depth, bits per pixel
-    uint32_t compression;
+    uint32_t compression; // Type of compression, in my case I'm not handling compression so this should be 0
     uint32_t imageSize; // Size of image (while compressed if present)
-    uint32_t XpixelsPerM; // Useful for physical printing
-    uint32_t YpixelsPerM; // Useful for physical printing
-    uint32_t coloursUsed;
+    uint32_t XpixelsPerM; // Useful for physical printing (which I don't need)
+    uint32_t YpixelsPerM; // Same as above
+    uint32_t coloursUsed; // Colours used, if 0 then 2^bitCount (or 1 << bitCount)
     uint32_t coloursImportant;
-    // Need colour table and raster data too
+    // Could move colour table and raster data here but probably not
 } InfoHeader;
+
+typedef struct { // BMP stores RGB as BGR
+    uint8_t blue;
+    uint8_t green;
+    uint8_t red;
+    uint8_t reserved; // Not sure why this exists, probably so it's aligned in 4 bytes and is easier for the CPU to get
+} RGBQuad;
 
 #pragma pack(pop) // Restore padding on structs
 
@@ -47,11 +55,27 @@ int main() {
         return 1;
     }
 
+    // Get colour palette (Normally would need to check bitCount <= 8 but it's guaranteed in my case so it's okay)
+    uint8_t numColours = infoHeader.coloursUsed == 0 ? 1 << infoHeader.bitCount : infoHeader.coloursUsed; // << is a way to do exponents
+    RGBQuad* colourTable = malloc(sizeof(RGBQuad) * numColours);
+
+    fread(colourTable, sizeof(colourTable), numColours, file);
+
+    // Get raster data
+    uint8_t padding = infoHeader.width % 4 != 0 ? infoHeader.width + (4 - (infoHeader.width % 4)) : 0; // Account for padding of 4 bytes (because BMP specification says so)
+    fseek(file, fileHeader.dataOffset, SEEK_SET); // Go to start of raster data
+
     // Printing
     printf("File Header\nSignature: %u, File size: %u, Reserved: %u, Data offset: %u\n", fileHeader.signature, fileHeader.fileSize, fileHeader.reserved, fileHeader.dataOffset);
+
     printf("Info Header\nSize: %u, Width: %u, Height: %u, Planes: %u, Bit count: %u, ", infoHeader.size, infoHeader.width, infoHeader.height, infoHeader.planes, infoHeader.bitCount);
     printf("Compression: %u, Image size: %u, X pixels per meter: %u, Y pixels per meter: %u, ", infoHeader.compression, infoHeader.imageSize, infoHeader.XpixelsPerM, infoHeader.YpixelsPerM);
     printf("Colours used: %u, Colours important: %u\n", infoHeader.coloursUsed, infoHeader.coloursImportant);
+
+    printf("Colours\n");
+    for (uint32_t i = 0; i < numColours; i++) {
+        printf("Index %u: Blue: %d, Green: %d, Red: %d\n", i, colourTable[i].blue, colourTable[i].green, colourTable[i].red);
+    }
     
     return 0;
 }
