@@ -62,8 +62,26 @@ int main() {
     fread(colourTable, sizeof(colourTable), numColours, file);
 
     // Get raster data
-    uint8_t padding = infoHeader.width % 4 != 0 ? infoHeader.width + (4 - (infoHeader.width % 4)) : 0; // Account for padding of 4 bytes (because BMP specification says so)
     fseek(file, fileHeader.dataOffset, SEEK_SET); // Go to start of raster data
+    
+    uint32_t rowSize = ((infoHeader.width * infoHeader.bitCount + 31) / 32) * 4; // Get row size and account for padding of 4 bytes (because BMP specification says so)
+    uint8_t* rowBuffer = (uint8_t*) malloc(rowSize);
+
+    for (int32_t i = 0; i < infoHeader.height; i++) {
+        if (fread(rowBuffer, 1, rowSize, file) != rowSize) break;
+
+        for (uint32_t j = 0; j < infoHeader.width; j++) {
+            // BMP monochrome stores each pixel in a bit
+            uint32_t byteIndex = j / 8; // A floating point number just gets floored down (1.2 = 1, 1.8 = 1, 2.1 = 2 etc)
+            uint8_t bitIndex  = 7 - (j % 8); // MSB first
+            uint8_t pixel = (rowBuffer[byteIndex] >> bitIndex) & 0x01; // Got this from stack overflow
+
+            printf("%c", pixel == 0 ? '0' : ' ');
+        }
+        printf("\n");
+    }
+
+    free(rowBuffer);
 
     // Printing
     printf("File Header\nSignature: %u, File size: %u, Reserved: %u, Data offset: %u\n", fileHeader.signature, fileHeader.fileSize, fileHeader.reserved, fileHeader.dataOffset);
